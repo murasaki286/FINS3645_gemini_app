@@ -1,78 +1,56 @@
 import os
+import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    st.error("GEMINI_API_KEY not set")
+    st.stop()
 
-def load_predictions(predictions_path):
-    """
-    Load the last 10 rows of prediction CSV for summarization.
-    """
-    df = pd.read_csv(predictions_path, parse_dates=['date'])
-    return df.tail(10)
+genai.configure(api_key=api_key)
+MODEL_ID = "models/chat-bison-001"
 
-
-def load_api_key():
-    """
-    Load the Gemini API key securely from environment variables.
-    """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY not set in environment variables")
-    return api_key
-
+def load_predictions(version: str) -> pd.DataFrame:
+    path = os.path.join("models", "outputs", f"btc_predictions_{version}.csv")
+    if not os.path.exists(path):
+        st.warning(f"File not found: {path}")
+        return pd.DataFrame()
+    return pd.read_csv(path, parse_dates=["date"])
 
 def generate_insight(prompt: str) -> str:
-    """
-    Generate textual insight using Google Gemini Pro model.
-    """
-    api_key = load_api_key()
-    genai.configure(api_key=api_key)
+    try:
+        model = genai.GenerativeModel(MODEL_ID)
+        chat = model.start_chat()
+        response = chat.send_message(prompt)
+        return response.text
+    except Exception as e:
+        return f"[Error generating insight] {e}"
 
-    model = genai.GenerativeModel("gemini-pro")
-    response = model.generate_content(prompt)
-    return response.text
+def build_prompt(df: pd.DataFrame, version: str) -> str:
+    recent = df.tail(10)
+    table_text = recent.to_string(index=False)
+    return (
+        f"You're an expert FinTech analyst. BTC prediction output using {version.upper()} data (last 10 days):\n\n"
+        f"{table_text}\n\n"
+        "Provide a concise, professional summary (3–5 lines) focusing on key trends and insights."
+    )
 
+st.title("BTC Forecast Summary")
+version = st.selectbox("Data version:", ["api", "csv"])
+df = load_predictions(version)
+if df.empty:
+    st.stop()
 
-def build_prompt(pred_df: pd.DataFrame, version: str) -> str:
-    """
-    Create a prompt with prediction table + version context.
-    """
-    df_text = pred_df.to_string(index=False)
-    prompt = f"""
-You're a FinTech analyst working on a university project.
-Below is a Ridge Regression model forecast for BTC using {version.upper()} data (last 10 days):
+st.subheader("Recent Predictions")
+st.dataframe(df.tail(10))
 
-{df_text}
+prompt = build_prompt(df, version)
+st.subheader("Insight")
+with st.spinner("Generating..."):
+    summary = generate_insight(prompt)
+st.markdown(summary)
 
-Write a concise summary (3–5 lines) discussing:
-1. Any noticeable prediction trend,
-2. Forecast accuracy (visually),
-3. Whether model seems stable or volatile.
-
-Respond in a professional tone suitable for an academic report.
-"""
-    return prompt
-
-
-def main():
-    versions = ["api", "csv"]
-    for version in versions:
-        file_path = f"models/outputs/btc_predictions_{version}.csv"
-
-        if not os.path.exists(file_path):
-            print(f"[Skipped] File not found: {file_path}")
-            continue
-
-        print(f"\n--- {version.upper()} DATA SUMMARY ---")
-        df = load_predictions(file_path)
-        prompt = build_prompt(df, version)
-
-        try:
-            summary = generate_insight(prompt)
-            print(summary)
-        except Exception as e:
-            print(f"[Error generating insight] {e}")
-
-
-if __name__ == "__main__":
-    main()
+if st.checkbox("Show full table"):
+    st.subheader("Full Table")
+    st.dataframe(df)
