@@ -1,0 +1,5 @@
+pandas
+streamlit
+matplotlib
+scikit-learn
+google-generativeai==0.5.4
