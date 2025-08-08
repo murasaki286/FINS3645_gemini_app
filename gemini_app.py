@@ -2,6 +2,9 @@ import os
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
+from dotenv import load_dotenv
+load_dotenv()
+
 
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
@@ -9,7 +12,7 @@ if not api_key:
     st.stop()
 
 genai.configure(api_key=api_key)
-MODEL_ID = "models/chat-bison-001"
+MODEL_ID = "gemini-2.5-flash"
 
 def load_predictions(version: str) -> pd.DataFrame:
     path = os.path.join("models", "outputs", f"btc_predictions_{version}.csv")
